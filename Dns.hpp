@@ -14,22 +14,24 @@ private:
     } FLAGS;
 
     struct Query {
-        char *qName;
+
+        std::string qName;
         uint16_t qType;
         uint16_t qClass;
-        Query(char * qName, uint16_t qType, uint16_t qClass):
+        Query(std::string qName, uint16_t qType, uint16_t qClass):
             qName(qName), qType(qType), qClass(qClass) {}
+
     };
 
     struct Answer {
-        
-        char *aName;
+
+        std::string aName;
         uint16_t aType;
         uint16_t aClass;
         uint32_t aTTL;
         uint8_t addr[4];
-        
-        Answer(char * aName, uint16_t aType, uint16_t aClass, uint32_t aTTL):
+
+        Answer(std::string aName, uint16_t aType, uint16_t aClass, uint32_t aTTL):
             aName(aName), aType(aType), aClass(aClass), aTTL(aTTL) {}
 
         std::string addrToStr(){
@@ -61,7 +63,8 @@ private:
         std::vector<Answer> answers;
     } package;
 
-    uint8_t * buffer;
+    uint8_t* buffer;
+    uint8_t* out;
 
     uint16_t get16bits() {
         uint16_t value;
@@ -70,35 +73,34 @@ private:
         return ntohs(value);
     }
 
-    void put8bits(uint8_t** buffer, uint8_t value) {
-        memcpy(*buffer, &value, 1);
-        *buffer += 1;
+    void put8bits(uint8_t value) {
+        memcpy(out, &value, 1);
+        out += 1;
     }
 
-    void put16bits(uint8_t** buffer, uint16_t value) {
+    void put16bits(uint16_t value) {
         value = htons(value);
-        memcpy(*buffer, &value, 2);
-        *buffer += 2;
+        memcpy(out, &value, 2);
+        out += 2;
     }
 
-    void put32bits(uint8_t** buffer, uint32_t value){
+    void put32bits(uint32_t value){
         value = htons(value);
-        memcpy(*buffer, &value, 4);
-        *buffer += 4;
+        memcpy(out, &value, 4);
+        out += 4;
     }
 
-    void putDomain(uint8_t** buffer, char * domain){
+    void putDomain(std::string domain){
 
-        char * start = domain;
-        char * cursor = domain;
-        uint8_t * buf = *buffer; 
+        const char * start = domain.c_str();
+        const char * cursor = start;
         uint8_t cont = 0;
         while( *cursor != 0 ){
             if(*cursor == '.'){
-                *buf = cont;
-                buf++;
-                memcpy(buf, start, cont);
-                buf += cont;
+                *out = cont;
+                out++;
+                memcpy(out, start, cont);
+                out += cont;
                 start += cont + 1;
                 cont = 0;
             }else{
@@ -107,19 +109,19 @@ private:
             cursor++;
         }
 
-        *buf = cont;
-        buf ++;
-        memcpy(buf, start, cont);
-        buf += cont;
+        *out = cont;
+        out ++;
+        memcpy(out, start, cont);
+        out += cont;
 
-        *buf = 0;
-        buf++;
-        *buffer = buf;
+        *out = 0;
+        out++;
+
     }
 
-    char * decodeDomain(){
+    std::string decodeDomain(){
 
-        char * name = new char(255);
+        char * name = new char[256];
         uint8_t len;
         int i = 0;
 
@@ -133,8 +135,10 @@ private:
             i++;
         }
         name[i-1] = 0;
+        std::string domain(name);
+        delete []name;
         buffer++;
-        return name;
+        return domain;
 
     }
 
@@ -146,7 +150,7 @@ private:
         package.ansCount = get16bits();
         package.autCount = get16bits();
         package.addCount = get16bits();
-        char * qDomain = decodeDomain();
+        std::string qDomain = decodeDomain();
         uint16_t qType = get16bits();
         uint16_t qClass = get16bits();
 
@@ -210,60 +214,58 @@ public:
         setFlag(FLAGS.IS_RESPONSE);
     }
 
-    size_t dumpPackage(uint8_t** buffer){
+    std::vector<uint8_t> dumpPackage(){
 
-        uint8_t* start = *buffer; 
-        put16bits(buffer, package.id);
-        put16bits(buffer, package.flags); 
-        put16bits(buffer, package.queCount);
-        put16bits(buffer, package.ansCount);
-        put16bits(buffer, package.autCount);
-        put16bits(buffer, package.addCount);
+        uint8_t* start = new uint8_t[256];
+        out = start;
+
+        put16bits(package.id);
+        put16bits(package.flags); 
+        put16bits(package.queCount);
+        put16bits(package.ansCount);
+        put16bits(package.autCount);
+        put16bits(package.addCount);
 
         for (Query q : package.queries){
-        
-            putDomain(buffer, q.qName);
-            put16bits(buffer, q.qType);
-            put16bits(buffer, q.qClass);
-        
+
+            putDomain(q.qName);
+            put16bits(q.qType);
+            put16bits(q.qClass);
+
         }
 
         for (Answer a : package.answers){
 
-            putDomain(buffer, a.aName);
-            put16bits(buffer, a.aType);
-            put16bits(buffer, a.aClass);
-            put32bits(buffer, a.aTTL);
-            put16bits(buffer, 4);
-            put8bits(buffer, a.addr[0]);
-            put8bits(buffer, a.addr[1]);
-            put8bits(buffer, a.addr[2]);
-            put8bits(buffer, a.addr[3]);
+            putDomain(a.aName);
+            put16bits(a.aType);
+            put16bits(a.aClass);
+            put32bits(a.aTTL);
+            put16bits(4);
+            put8bits(a.addr[0]);
+            put8bits(a.addr[1]);
+            put8bits(a.addr[2]);
+            put8bits(a.addr[3]);
 
         }
 
-        return (*buffer) - start;
- 
+        std::vector<uint8_t> res(start, start + (out - start));
+        delete[] start;
+        return res;
     }
 
 };
 
 /*
+void print_hex(std::vector <uint8_t> out) {
 
-void print_hex(uint8_t* out, size_t out_size) {
-
-  printf("%zu bytes:\n", out_size);
-  for(size_t i = 0; i < out_size; ++i)
-    printf("0x%02x ", out[i]);
+  printf("%zu bytes:\n", out.size());
+  for(uint8_t e : out)
+    printf("0x%02x ", e);
   printf("\n");
 
 }
 
 int main(){
-
-    uint8_t out [256];
-    size_t out_size = 0;
-    uint8_t * p = out;
 
     uint8_t trama[] = {
         0xf9,0xc1,0x01,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x03,0x77,0x77,0x77,0x08,
@@ -274,9 +276,9 @@ int main(){
     dns.prettyPrint();
     dns.resolve();
     dns.prettyPrint();
-    out_size = dns.dumpPackage(&p);
+    std::vector<uint8_t> out = dns.dumpPackage();
 
-    print_hex(out, out_size);
+    print_hex(out);
 
     return 0;
 

@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <vector>
 
 #define BUF_SIZE 256
 
@@ -28,11 +29,8 @@ static void udp_cb(const int sock, short int which, void *arg){
 	struct sockaddr_in server_sin;
 	socklen_t server_sz = sizeof(server_sin);
 	uint8_t buf[BUF_SIZE];
-	uint8_t out[BUF_SIZE];
-
 	memset(buf, 0, BUF_SIZE);
-	memset(out, 0, BUF_SIZE);
-
+	
 	/* Recv the data, store the address of the sender in server_sin */
 
 	if (recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &server_sin, &server_sz) == -1) {
@@ -45,13 +43,13 @@ static void udp_cb(const int sock, short int which, void *arg){
 	dns.resolve();
 	dns.prettyPrint();
 
-	size_t out_size = 0;
-	uint8_t * p = out;
-	out_size = dns.dumpPackage(&p);
-
+	std::vector<uint8_t> vout = dns.dumpPackage();
+	size_t out_size = vout.size();
+	std::string out(vout.begin(), vout.end());
+	
 	/* Send the data response to the client */
-
-	if (sendto(sock, out, out_size, 0, (struct sockaddr *) &server_sin, server_sz) == -1 ) {
+	
+	if (sendto(sock, out.c_str(), out_size, 0, (struct sockaddr *) &server_sin, server_sz) == -1 ) {
 		perror("sendto()");
 		event_loopbreak();
 	}
