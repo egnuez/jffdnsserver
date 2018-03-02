@@ -1,13 +1,13 @@
 
 CC=g++
-CFLAGS=-Wall
+CFLAGS= -std=c++17
 LDFLAGS=-levent
 
 OBJECTS=client.o
 BIN=simple_dns_server
 
 all:
-	$(CC) $(BIN).cpp -o $(BIN) $(LDFLAGS)
+	$(CC) $(CFLAGS) $(BIN).cpp -o $(BIN) $(LDFLAGS)
 
 .PHONY: clean
 clean:
