@@ -22,6 +22,15 @@
 #include "args.h"
 #include "Dns.hpp"
 
+void print_hex(std::vector <uint8_t> out) {
+
+  printf("%zu bytes:\n", out.size());
+  for(uint8_t e : out)
+    printf("0x%02x ", e);
+  printf("\n");
+
+}
+
 static void udp_cb(const int sock, short int which, void *arg){
 
 	struct sockaddr_in server_sin;
@@ -80,47 +89,7 @@ int main(int argc, char **argv) {
 		);
 
 	}
-/*
-	dns::Question* question1 = new dns::Question("www.site1.com", 1, 1);
-    dns::Question* question2 = new dns::Question("www.site2.com", 1, 1);
-	dns::Question* question3 = new dns::Question("www.site1.com", 1, 1);
-    dns::Question* question4 = new dns::Question("www.site3.com", 1, 1);
-   
-	dns::Answer* answer1 = new dns::A_Answer("www.site1.com", 1, 1, 60);
-    answer1->setRData(1,2,3,4);
-    dns::Answer* answer2 = new dns::A_Answer("www.site2.com", 1, 1, 120);
-    answer2->setRData(1,2,3,5);
 
-    dns::Cache cache;
-    cache.load("/etc/hosts");
-    cache.set(question1, answer1);
-    cache.set(question2, answer2);
-
-    std::optional<dns::Answer*> res1 = cache.get(question1);
-    std::optional<dns::Answer*> res2 = cache.get(question2);
-	std::optional<dns::Answer*> res3 = cache.get(question3);
-    std::optional<dns::Answer*> res4 = cache.get(question4);
-
-	if(res1)
-    	std::cout << (*res1)->rDataToStr() << std::endl;
-    else
-		std::cout << "q1 not found" << std::endl;
-	
-	if(res2)
-		std::cout << (*res2)->rDataToStr() << std::endl;
-	else
-		std::cout << "q2 not found" << std::endl;
-
-	if(res3)
-		std::cout << (*res3)->rDataToStr() << std::endl;
-	else
-		std::cout << "q3 not found" << std::endl;
-
-	if(res4)
-		std::cout << (*res4)->rDataToStr() << std::endl;
-	else
-		std::cout << "q4 not found" << std::endl;
-*/
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;

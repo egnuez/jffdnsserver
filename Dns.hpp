@@ -7,18 +7,8 @@
 #include <map>
 #include <algorithm>
 #include <fstream>
+#include <stack>
 #include <arpa/inet.h>
-
-void print_hex(std::vector <uint8_t> out) {
-
-  printf("%zu bytes:\n", out.size());
-  for(uint8_t e : out)
-    printf("0x%02x ", e);
-  printf("\n");
-
-}
-
-// TODO: What about using unorder_map insteaf of map?
 
 namespace dns {
 
@@ -48,8 +38,11 @@ struct Answer {
     Answer(std::string aName, uint16_t aType, uint16_t aClass, uint32_t aTTL):
         aName(aName), aType(aType), aClass(aClass), aTTL(aTTL) {}
 
-    virtual void setRData(uint8_t a, uint8_t b, uint8_t c, uint8_t d) = 0;
-    virtual std::string rDataToStr() = 0;
+    virtual void setRData(uint8_t a, uint8_t b, uint8_t c, uint8_t d){};
+    virtual void setRData(std::string domain){};
+    virtual std::string rDataToStr(){
+        return std::string("default");
+    };
     virtual void putRData (uint8_t** out) = 0;
 
 };
@@ -89,6 +82,33 @@ struct A_Answer: public Answer {
         memcpy(*out, &addr[2], 1); *out += 1;
         memcpy(*out, &addr[3], 1); *out += 1;
     }
+};
+
+struct CNAME_Answer: public Answer {
+
+    std::string domain;
+
+    CNAME_Answer(std::string aName, uint16_t aType, uint16_t aClass, uint32_t aTTL):
+        Answer(aName, aType, aClass, aTTL) {}
+
+    void setRData(std::string domain){
+        this->domain = domain;
+    }
+
+    std::string rDataToStr(){
+        return domain;
+    }
+
+    void putRData (uint8_t** out){
+
+        int16_t value = domain.size();
+        value = htons(value);
+        memcpy(*out, &value, 2);
+        *out += 2;
+        memcpy(*out, domain.c_str(), value); *out += 1;
+    
+    }
+
 };
 
 class Cache {
@@ -194,11 +214,25 @@ class Package {
     std::vector<Answer*> answers;
 
     // QR
-    
+    public:
+
     enum {
         QR_Request = 0,
         QR_Response = 1
     };
+
+    std::string qr2string(uint8_t qr){
+        std::string res("Unknown");
+        switch(qr){
+            case 0:
+                res = "Request";
+                break;
+            case 1:
+                res = "Response";
+                break;
+        }
+        return res;
+    }
 
     // RCodes
     
@@ -210,9 +244,9 @@ class Package {
         NotImplemented_ResponseType = 4,
         Refused_ResponseType = 5
     };
-  
-    // Register Types
 
+    // Register Types
+    
     enum {
         A_Type = 1,
         NS_Type = 2,
@@ -224,6 +258,59 @@ class Package {
         AAAA_Type = 28,
         SRV_Type = 33
     };
+
+    std::string rtypes2string(uint8_t rtype){
+        std::string res("Unknown");
+        switch(rtype){
+            case 1:
+                res = "A";
+                break;
+            case 2:
+                res = "NS";
+                break;
+            case 5:
+                res = "CNAME";
+                break;
+            case 6:
+                res = "SOA";
+                break;
+            case 12:
+                res = "PTR";
+                break;
+            case 15:
+                res = "MX";
+                break;
+            case 16:
+                res = "TXT";
+                break;
+            case 28:
+                res = "AAAA";
+                break;
+            case 33:
+                res = "SRV";
+                break;
+        }
+        return res;
+    }
+
+    // Classes
+
+    enum {
+        IN_Class = 1
+    };
+
+    std::string classes2string(uint8_t class_){
+        std::string res("Unknown");
+        switch(class_){
+            case 1:
+                res = "IN";
+                break;
+        }
+
+        return res;
+    }
+
+    private:
      
     // Op Code 
 
@@ -235,14 +322,51 @@ class Package {
         UPDATE_OpCode = 5   // change resource records 
     };
 
+    std::string opcode2string(uint8_t opcode){
+        std::string res("Unknown");
+        switch(opcode){
+            case 0:
+                res = "Question";
+                break;
+            case 1:
+                res = "IQuestion";
+                break;
+            case 2:
+                res = "Status";
+                break;
+            case 4:
+                res = "Notify";
+                break;
+            case 5:
+                res = "Update";
+                break;
+        }
+        return res;
+    }
+
+    uint8_t* start;
     uint8_t* buffer;
     uint8_t* out;
+
+    uint8_t get8bits() {
+        uint8_t value;
+        memcpy(&value, buffer, 1);
+        buffer += 1;
+        return value;
+    }
 
     uint16_t get16bits() {
         uint16_t value;
         memcpy(&value, buffer, 2);
         buffer += 2;
         return ntohs(value);
+    }
+
+    uint32_t get32bits() {
+        uint32_t value;
+        memcpy(&value, buffer, 4);
+        buffer += 4;
+        return ntohl(value);
     }
 
     void put8bits(uint8_t value) {
@@ -296,22 +420,47 @@ class Package {
         char * name = new char[256];
         uint8_t len;
         int i = 0;
+        std::stack<uint8_t*> pointers;
 
         while(*buffer != 0){
+
             len = (uint8_t) *buffer;
-            buffer++;
-            memcpy(name + i, buffer, len);
-            buffer += len;
-            i += len;
-            name[i] = '.';
-            i++;
+
+            // Is a offset of before name appaer
+            if((len >> 6) == 0x03){
+            
+                buffer++;
+                uint16_t offset = (uint16_t) *buffer;
+                offset &= 0x3FFF;
+                buffer++;
+                pointers.push(buffer);
+                buffer = start + offset;
+
+            }else{
+
+                buffer++;
+                memcpy(name + i, buffer, len);
+                buffer += len;
+                i += len;
+                name[i] = '.';
+                i++;
+            }
+
         }
+
+        if(*buffer == 0)
+            buffer++;
+
+        while(!pointers.empty()){
+            buffer = pointers.top();
+            pointers.pop();
+        }
+
         name[i-1] = 0;
         std::string domain(name);
         delete []name;
-        buffer++;
         return domain;
-
+        
     }
 
     void parse() {
@@ -322,11 +471,13 @@ class Package {
         ansCount = get16bits();
         autCount = get16bits();
         addCount = get16bits();
-        std::string qDomain = decodeDomain();
-        uint16_t qType = get16bits();
-        uint16_t qClass = get16bits();
 
         for (int i = 0; i < queCount; ++i){
+
+            std::string qDomain = decodeDomain();
+            uint16_t qType = get16bits();
+            uint16_t qClass = get16bits();
+
             questions.push_back(Question(
                 qDomain,
                 qType,
@@ -334,9 +485,68 @@ class Package {
             ));
         }
 
+        for (int i = 0; i < ansCount; ++i){
+  
+            std::string Domain =   decodeDomain();
+            uint16_t Type =        get16bits();
+            uint16_t Class =       get16bits();
+            uint32_t TTL =         get32bits();
+            uint16_t Lenght =       get16bits();
+
+            switch(Type){
+
+            case A_Type: {
+                
+                uint8_t oct1 = get8bits();
+                uint8_t oct2 = get8bits();
+                uint8_t oct3 = get8bits();
+                uint8_t oct4 = get8bits();
+                
+                Answer* ans = new A_Answer(
+                    Domain,
+                    Type,
+                    Class,
+                    TTL
+                );
+
+                ans->setRData(oct1, oct2, oct3, oct4);
+
+                answers.push_back(ans);
+                break;
+            }
+
+            case CNAME_Type: {
+
+                std::string cname = decodeDomain();
+                
+                Answer* ans = new CNAME_Answer(
+                    Domain,
+                    Type,
+                    Class,
+                    TTL
+                );
+
+                ans->setRData(cname);
+                answers.push_back(ans);
+        
+                break;
+            }
+
+            }
+        
+        }
+
     }
 
     public:
+
+    uint16_t getAutCount(){
+        return ansCount;
+    }
+
+    uint8_t getFlagQR(){
+        return (flags & 0x8000) >> 15;
+    }
 
     uint8_t getFlagOPCode(){
         return (flags & 0x7800) >> 11;
@@ -350,8 +560,26 @@ class Package {
         flags |= (qr & 0x01) << 15;
     }
 
-    Package(uint8_t* buffer):buffer(buffer) {
+    Package(uint8_t* buffer):buffer(buffer), start(buffer) {
         parse();
+    }
+
+    Package(uint16_t id) {
+        this->id = id;
+        this->flags = 0;
+        this->queCount = 0;
+        this->ansCount = 0;
+        this->autCount = 0;
+        this->addCount = 0;
+    }
+
+    void addQuestion(Question question){
+        this->questions.push_back(question);
+        this->queCount++;
+    }
+    void addAnswer(Answer* answer){
+        this->answers.push_back(answer);
+        this->ansCount++;
     }
 
     ~Package() {
@@ -367,6 +595,12 @@ class Package {
         std::cout << "++++ DNS Package +++++" << std::endl;
         std::cout << "ID: " << id << std::endl;
         std::cout << "FLAG: " << flags << std::endl;
+        std::cout << "\t" << qr2string(getFlagQR()) << std::endl;
+        std::cout << "\t" << opcode2string(getFlagOPCode()) << std::endl;
+        std::cout << "\t." << std::endl;
+        std::cout << "\t." << std::endl;
+        std::cout << "\t." << std::endl;
+        std::cout << "\t." << std::endl;
         std::cout << "Question Count: " << queCount << std::endl;
         std::cout << "Answer Count: " << ansCount << std::endl;
         std::cout << "Auth Count: " << autCount << std::endl;
@@ -375,15 +609,15 @@ class Package {
         for (Question q : questions){
             std::cout << "Question => "
                 << "Name("  << q.qName  << "),"
-                << "Type("  << q.qType  << "),"
-                << "Class(" << q.qClass << ")" << std::endl;
+                << "Type("  << rtypes2string(q.qType)  << "),"
+                << "Class(" << classes2string(q.qClass) << ")" << std::endl;
         }
 
         for (Answer* a : answers){
             std::cout << "Answer => "
                 << "Name("  << a->aName      << "),"
-                << "Type("  << a->aType      << "),"
-                << "Class(" << a->aClass     << "),"
+                << "Type("  << rtypes2string(a->aType)    << "),"
+                << "Class(" << classes2string(a->aClass)  << "),"
                 << "TTL("   << a->aTTL       << "),"
                 << "RData("  << a->rDataToStr()  << ")" << std::endl;
         }
@@ -429,6 +663,28 @@ class Package {
 
 class Resolver {
     Cache& cache;
+    std::string remote_ip;
+    
+    /*
+	sockaddr_in si_other;
+	socklen_t serverlen = sizeof(si_other);
+	memset((char *) &si_other, 0, sizeof(si_other));
+    si_other.sin_family = AF_INET;
+    si_other.sin_port = htons(53);
+    inet_aton("8.8.8.8", &si_other.sin_addr);
+			
+	std::cout<< "Enviando" << std::endl;
+	sendto(sockfd, buf, 34, 0, (struct sockaddr *) &si_other, serverlen);
+
+	uint8_t out[BUF_SIZE];
+	memset(out, 0, BUF_SIZE);
+    std::cout<< "Esperando respuesta" << std::endl;
+	ssize_t l = recvfrom(sockfd, out, BUF_SIZE, 0, (struct sockaddr *) &si_other, &serverlen);
+	std::cout<< "Recibido:" << l << std::endl;
+	std::vector<uint8_t> res(out, out + l);
+	print_hex(res);
+	*/
+
     public:
     Resolver(Cache& cache):cache(cache){}
     void resolve(Package& package) {
@@ -440,6 +696,11 @@ class Resolver {
                     if(ret){
                         package.answers.push_back(*ret);
                         package.ansCount++;
+                    }else{
+                        // Build Package with a question
+                        // Resolve it remotly
+                        // Add Answer to actual package
+                        // Caching Question/Answer
                     }
                 }
             }
@@ -453,43 +714,3 @@ class Resolver {
 };
 
 };
-
-/*
-int main(){
-
-    dns::Answer* answer1 = new dns::A_Answer("www.site1.com", 1, 1, 60);
-    answer1->setRData(1,2,3,4);
-    dns::Answer* answer2 = new dns::A_Answer("www.site2.com", 1, 1, 120);
-    answer2->setRData(1,2,3,5);
-
-    dns::Cache cache;
-    cache.load("/etc/hosts");
-    cache.set("wwww.site1.com", answer1);
-    cache.set("wwww.site2.com", answer2);
-
-    std::optional<dns::Answer*> res1 = cache.get("wwww.site1.com");
-    std::optional<dns::Answer*> res2 = cache.get("wwww.site2.com");
-    std::optional<dns::Answer*> res3 = cache.get("pms.gocloud1.com");
-
-    std::cout << (*res1)->rDataToStr() << std::endl;
-    std::cout << (*res2)->rDataToStr() << std::endl;
-    std::cout << (*res3)->rDataToStr() << std::endl;
-
-    uint8_t trama[] = {
-        0xf9,0xc1,0x01,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x03,0x77,0x77,0x77,0x08,
-        0x66,0x61,0x63,0x65,0x62,0x6f,0x6f,0x6b,0x03,0x63,0x6f,0x6d,0x00,0x00,0x01,0x00,0x01
-    };
-
-    dns::Package package(trama, cache);
-
-    package.prettyPrint();
-    package.resolve();
-    package.prettyPrint();
-
-    std::vector<uint8_t> out = package.dump();
-    print_hex(out);
-
-    return 0;
-
-}
-*/

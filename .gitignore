@@ -36,5 +36,6 @@
 *.app
 
 simple_dns_server
+simple_dns_tests
 
 # End of https://www.gitignore.io/api/c++
