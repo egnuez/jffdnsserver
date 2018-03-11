@@ -22,6 +22,8 @@
 #include "args.h"
 #include "Dns.hpp"
 
+dns::Cache cache;
+
 static void udp_cb(const int sock, short int which, void *arg){
 
 	struct sockaddr_in server_sin;
@@ -34,13 +36,15 @@ static void udp_cb(const int sock, short int which, void *arg){
 		event_loopbreak();
 	}
 
-	dns::Cache cache;
-	cache.load(arguments.host_file);
 	dns::Resolver resolver(cache);
+	
 	dns::Package package(buf);
+	
 	if (arguments.verbose)
 		package.prettyPrint();
+
 	resolver.resolve(package);
+
 	if (arguments.verbose)
 		package.prettyPrint();
 
@@ -80,6 +84,8 @@ int main(int argc, char **argv) {
 		);
 
 	}
+
+	cache.load(arguments.host_file);
 
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&sin, 0, sizeof(sin));
