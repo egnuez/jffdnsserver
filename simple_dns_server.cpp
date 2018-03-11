@@ -22,15 +22,6 @@
 #include "args.h"
 #include "Dns.hpp"
 
-void print_hex(std::vector <uint8_t> out) {
-
-  printf("%zu bytes:\n", out.size());
-  for(uint8_t e : out)
-    printf("0x%02x ", e);
-  printf("\n");
-
-}
-
 static void udp_cb(const int sock, short int which, void *arg){
 
 	struct sockaddr_in server_sin;

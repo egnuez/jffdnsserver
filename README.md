@@ -1,4 +1,12 @@
 # Just For Fun DNS Server
+
+Features:
+
+- Resolution names in /etc/hosts 
+- Relay queries to a DNS Server ip given
+- Caching
+
+
 ```sh
 emiliano sdserver  $ make
 g++ -std=c++17 simple_dns_server.cpp -o simple_dns_server -levent

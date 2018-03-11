@@ -1,5 +1,4 @@
 #include "Dns.hpp"
-#define BUF_SIZE 256
 
 int main(){
 
@@ -112,37 +111,67 @@ int main(){
     PackageResponseSite2.addAnswer(answerSite2);
     PackageResponseSite2.setFlagQR(dns::Package::QR_Response);
     PackageResponseSite2.prettyPrint();
+    
+    /*
+    ** Test Cache  
+    */
+
+    dns::Cache cache;
 
     /*
-    dns::Cache cache;
-    cache.load("/etc/hosts");
-    cache.set(question1, answer1);
-    cache.set(question2, answer2);
-
-    std::optional<dns::Answer*> res1 = cache.get(question1);
-    std::optional<dns::Answer*> res2 = cache.get(question2);
-	std::optional<dns::Answer*> res3 = cache.get(question3);
-    std::optional<dns::Answer*> res4 = cache.get(question4);
-
-	if(res1)
-    	std::cout << (*res1)->rDataToStr() << std::endl;
-    else
-		std::cout << "q1 not found" << std::endl;
-	
-	if(res2)
-		std::cout << (*res2)->rDataToStr() << std::endl;
-	else
-		std::cout << "q2 not found" << std::endl;
-
-	if(res3)
-		std::cout << (*res3)->rDataToStr() << std::endl;
-	else
-		std::cout << "q3 not found" << std::endl;
-
-	if(res4)
-		std::cout << (*res4)->rDataToStr() << std::endl;
-	else
-		std::cout << "q4 not found" << std::endl;
+    ** This creates A registers for every host in /etc/hosts
+    ** Example: "172.20.197.15   pms.gocloud1.com"
     */
+
+    cache.load("/etc/hosts");
+
+    /*
+    ** Caching QuenstionSite1 and answerSite1.
+    */
+
+    cache.set(QuestionSite1, PackageResponseSite1.getAnswers());
+    
+    std::optional<std::vector<dns::Answer*>> res1 = cache.get(QuestionSite1);
+    std::optional<std::vector<dns::Answer*>> res2 = cache.get(QuestionSite2);
+
+	if(res1){
+        std::vector<dns::Answer*> ans = *res1;
+    	std::cout << ans[0]->rDataToStr() << std::endl;
+    }else
+	    std::cout << "QuestionSite1 not found" << std::endl;
+	
+	if(res2){
+        std::vector<dns::Answer*> ans = *res2;
+		std::cout << (ans[0])->rDataToStr() << std::endl;
+    }else
+		std::cout << "QuestionSite2 not found" << std::endl;
+    
+    /*
+    ** Resolver
+    */
+
+    dns::Question QuestionGoogle("www.google.com", dns::Package::A_Type, dns::Package::IN_Class);
+    dns::Package PackageGoogle(0x0111);
+    PackageGoogle.addQuestion(QuestionGoogle);
+    PackageGoogle.prettyPrint();
+
+    dns::Resolver resolver(cache);
+    resolver.resolve(PackageGoogle);
+    PackageGoogle.prettyPrint();
+
+    /*
+    ** Checking if www.google.com is cached.
+    */
+
+    dns::Question QuestionGoogle2("www.google.com", dns::Package::A_Type, dns::Package::IN_Class);
+    std::optional<std::vector<dns::Answer*>> res3 = cache.get(QuestionGoogle2);
+
+	if(res3){
+        std::vector<dns::Answer*> ans = *res3;
+        std::cout << "Google found un cache :)" << std::endl;
+		std::cout << (ans[0])->rDataToStr() << std::endl;
+    }else{
+		std::cout << "Google not found in Cache:(" << std::endl;
+    }
 
 }
